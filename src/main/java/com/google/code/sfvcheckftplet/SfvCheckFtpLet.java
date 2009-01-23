@@ -1,15 +1,13 @@
 package com.google.code.sfvcheckftplet;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.Map.Entry;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedInputStream;
@@ -30,8 +28,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	private static final String SFV_EXT = ".sfv";
 	
 	private static final int SITE_RESPONSE = 200;
-	private static final int UPLOAD_RESPONSE = 226;
-	
+	private static final int TRANSFER_COMPLETE_RESPONSE = 226;
 	
 	@Override
 	public FtpletResult onSite(FtpSession session, FtpRequest request) throws FtpException, IOException {
@@ -52,50 +49,91 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	
 	@Override
 	public FtpletResult onUploadEnd(FtpSession session, FtpRequest request) throws FtpException, IOException {
-		logger.trace(request.getCommand());
-		logger.trace(request.getArgument());
 		String filePath = session.getUser().getHomeDirectory()
 				+ session.getFileSystemView().getFile(request.getArgument()).getAbsolutePath();
 
 		File file = new File(filePath);
 		if(file.getName().endsWith(SFV_EXT)){
-			rescan(session, UPLOAD_RESPONSE, file.getParentFile());
+			rescan(session, TRANSFER_COMPLETE_RESPONSE, file.getParentFile());
 		}else{
-			handleFile(session, UPLOAD_RESPONSE, file);
+			// TODO find a better place to handle this where we can generate output
+			handleFile(session, TRANSFER_COMPLETE_RESPONSE, file);
 		}
 		return super.onUploadEnd(session, request);
 	}
 	
 	private void rescan(FtpSession session, int replyCode, File folder) throws IOException, FtpException{
-		session.write(new DefaultFtpReply(SITE_RESPONSE, "Rescanning files..."));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
 		File sfv = findSfv(folder);
 		if (sfv != null) {
+			session.write(new DefaultFtpReply(SITE_RESPONSE, "Rescanning files..."));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
 			Map<String, String> filesToCheck = parseSfv(sfv);
+			int count = filesToCheck.size();
+			int found = 0;
+			int failed = 0; 
+			long totalSize = 0;
 			for(Entry<String,String> entry:filesToCheck.entrySet()){
 				File toCheck = new File(folder, entry.getKey());
-				handleFileNew(session, replyCode, toCheck, entry.getValue());
+				Status status = handleFileNew(session, replyCode, toCheck, entry.getValue());
+				if(status == Status.OK){
+					found++;
+					totalSize += toCheck.length();
+				}else if(status == Status.FAIL){
+					failed++;
+				}
 			}
+			float percentage = (float)found/count;
+			int percentageInt = (int) Math.floor(percentage * 100.0f);
+			removeProgressFiles(folder);
+			if(percentageInt == 100){
+				// TODO get data from id3 tag?
+				totalSize = totalSize / (1024*1024);
+				File file = new File(folder, "[SFV] - ( "+totalSize+"M "+count+"F - COMPLETE - Beat 2006 ) - [SFV]");
+				file.createNewFile();
+			}else{
+				File file = new File(folder, progressBar(percentage)+" - "+percentageInt+"% Complete - [SFV]");
+				file.createNewFile();
+			}
+			
+			session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, " Passed : "+found));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, " Failed : "+failed));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, " Missing: "+(count-failed-found)));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, "  Total : "+count));
+			session.write(new DefaultFtpReply(SITE_RESPONSE, "Command Successful."));
+		}else{
+			session.write(new DefaultFtpReply(SITE_RESPONSE, "No sfv file found."));
 		}
-		// TODO implement
-		session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, ""));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, " Passed : 2"));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, " Failed : 0"));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, " Missing: 0"));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, "  Total : 2"));
-		session.write(new DefaultFtpReply(SITE_RESPONSE, "Command Successful."));
+
 	}
 	
-	private void handleFileNew(FtpSession session, int replyCode, File file, String expectedHex) throws IOException,
-			FtpException {
-		if (file.exists()) {
-
-			long checksum = doChecksum(file);
-			String hex = Long.toString(checksum, 16);
-			if (expectedHex.equals(hex)) {
-				session.write(new DefaultFtpReply(replyCode, "File: " + file.getName() + " " + hex));
+	private String progressBar(float percentage) {
+		int count = (int) Math.floor(percentage * 14.0f);
+		StringBuilder builder = new StringBuilder("[");
+		for (int i = 0; i < 14; i++) {
+			if (i < count) {
+				builder.append('#');
 			} else {
+				builder.append(':');
+			}
+		}
+		builder.append(']');
+		return builder.toString();
+	}
+	
+	private Status handleFileNew(FtpSession session, int replyCode, File file, String sfvHex) throws IOException,
+			FtpException {
+		Status status= null;
+		if (file.exists()) {
+			long checksum = doChecksum(file);
+			if (hexToLong(sfvHex) == checksum) {
+				status = Status.OK;
+				removeMissingFile(file);
+				session.write(new DefaultFtpReply(replyCode, "File: " + file.getName() + " " + sfvHex));
+			} else {
+				logger.warn("FAIL "+longToHex(checksum)+" != "+sfvHex);
+				status = Status.FAIL;
 				session.write(new DefaultFtpReply(replyCode, "FAIL " + file.getName()));
 				File renamed = new File(file.getParentFile(), file.getName() + ".bad");
 				if (renamed.exists()) {
@@ -103,13 +141,53 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 				}
 				file.renameTo(renamed);
 			}
-
 		} else {
-			session.write(new DefaultFtpReply(replyCode, "File not found: " + file.getName()));
+			status = Status.MISSING;
+			createMissingFile(file);
+		}
+		return status;
+	}
+	
+	private long hexToLong(String hex){
+		return Long.valueOf(hex, 16);
+	}
+	
+	private String longToHex(Long hex){
+		String val = Long.toHexString(hex);
+		// TOOD find faster method, compare speed with numberformat?
+		if(val.length()<8){
+			StringBuilder str = new  StringBuilder();
+			for(int i=0;i<8-val.length();i++){
+				str.append("0");
+			}
+			str.append(val);
+			val = str.toString();
+		}
+		return val;
+	}
+	
+	private void removeProgressFiles(File folder) throws IOException{
+		File[] files = folder.listFiles(new ProgressFileFilter());
+		if(files != null){
+			for (File curFile : files) {
+				curFile.delete();
+			}
 		}
 	}
 	
-	private void handleFile(FtpSession session, int replyCode, File file) throws IOException, FtpException{
+	private void createMissingFile(File file) throws IOException{
+		File missingFile = new File(file.getParent(), file.getName()+"-missing");
+		missingFile.createNewFile();
+	}
+	
+	private void removeMissingFile(File file){
+		File missingFile = new File(file.getParent(), file.getName()+"-missing");
+		missingFile.delete();
+	}
+	
+	
+	private Status handleFile(FtpSession session, int replyCode, File file) throws IOException, FtpException{
+		Status status= null;
 		if(file.exists()){
 			File sfv = findSfv(file.getParentFile());
 			if (sfv != null) {
@@ -118,11 +196,14 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 				String sfvHex = files.get(file.getName());
 				if(sfvHex != null){
 					long checksum = doChecksum(file);
-					String hex = Long.toString(checksum, 16);
-					if(sfvHex.equals(hex)){
-						session.write(new DefaultFtpReply(replyCode,"OK "+file.getName() + " " + hex));
+					if(hexToLong(sfvHex) == checksum){
+						status = Status.OK;
+						removeMissingFile(file);
+						//session.write(new DefaultFtpReply(replyCode,"OK "+file.getName() + " " + sfvHex));
 					}else{
-						session.write(new DefaultFtpReply(replyCode,"FAIL "+file.getName()));
+						logger.warn("FAIL "+longToHex(checksum)+" != "+sfvHex);
+						status = Status.FAIL;
+						//session.write(new DefaultFtpReply(replyCode,"FAIL "+file.getName()));
 						File renamed = new File(file.getParentFile(), file.getName()+".bad");
 						if(renamed.exists()){
 							renamed.delete();
@@ -130,12 +211,15 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 						file.renameTo(renamed);
 					}
 				}else{
-					session.write(new DefaultFtpReply(replyCode, "File not in sfv: "+file.getName()));
+					status = Status.UNKNOWN;
+					//session.write(new DefaultFtpReply(replyCode, "File not in sfv: "+file.getName()));
 				}
 			}
 		}else{
-			session.write(new DefaultFtpReply(replyCode, "File not found: "+file.getName()));
+			status = Status.MISSING;
+			createMissingFile(file);
 		}
+		return status;
 	}
 
 	private File findSfv(File folder) {
@@ -152,28 +236,22 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 
 	private Map<String, String> parseSfv(File sfvFile) throws IOException {
 		Map<String, String> files = new LinkedHashMap<String, String>();
-		FileInputStream fstream = null;
+		Scanner scanner = null;
 		try {
-			// Open the file that is the first
-			// command line parameter
-			fstream = new FileInputStream(sfvFile);
-			// Get the object of DataInputStream
-			DataInputStream in = new DataInputStream(fstream);
-			BufferedReader br = new BufferedReader(new InputStreamReader(in));
+			scanner = new Scanner(sfvFile);
 			String strLine;
-			// Read File Line By Line
-			while ((strLine = br.readLine()) != null) {
-				strLine = strLine.trim();
-				if(!strLine.startsWith(";") && !strLine.isEmpty()){
+			while (scanner.hasNextLine()) {
+				strLine = scanner.nextLine();
+				if (!strLine.startsWith(";") && !strLine.isEmpty()) {
 					int last = strLine.lastIndexOf(' ');
 					String file = strLine.substring(0, last);
-					String hex = strLine.substring(last+1);
+					String hex = strLine.substring(last + 1);
 					files.put(file, hex);
 				}
 			}
 		} finally {
-			if(fstream != null){
-				fstream.close();
+			if (scanner != null) {
+				scanner.close();
 			}
 		}
 		return files;
@@ -184,10 +262,10 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		CheckedInputStream cis = null;
 		InputStream fis = null;
 		try {
-			// Computer CRC32 checksum
+			// Compute CRC32 checksum
 			fis = new FileInputStream(file);
 			cis = new CheckedInputStream(fis, new CRC32());
-			byte[] buf = new byte[128];
+			byte[] buf = new byte[2048];
 			while (cis.read(buf) >= 0) {
 				// nothing to do, just read
 			}
@@ -198,6 +276,13 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 			}
 		}
 		return checksum;
+	}
+	
+	private static enum Status{
+		MISSING,
+		FAIL,
+		OK,
+		UNKNOWN
 	}
 	
 	private static final class NoFolderOrSfvFileFilter implements FileFilter {
@@ -211,6 +296,13 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		@Override
 		public boolean accept(File pathname) {
 			return pathname.isFile() && pathname.getName().endsWith(SFV_EXT);
+		}
+	}
+	
+	private static final class ProgressFileFilter implements FileFilter {
+		@Override
+		public boolean accept(File pathname) {
+			return pathname.isFile() && pathname.getName().endsWith("[SFV]");
 		}
 	}
 	
