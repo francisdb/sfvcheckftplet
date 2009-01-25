@@ -115,9 +115,9 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
-				<configuration>
+				<!-- <configuration>
 					<configLocation>checkstyle.xml</configLocation>
-				</configuration>
+				</configuration> -->
 			</plugin>
 			<plugin>
 				<groupId>net.sf</groupId>
