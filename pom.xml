@@ -7,6 +7,13 @@
 	<version>1.0-SNAPSHOT</version>
 	<name>SFV Cheking FtpLet for Apache FtpServer</name>
 	<url>http://maven.apache.org</url>
+	
+	<scm>
+		<connection>scm:svn:http://sfvcheckftplet.googlecode.com/svn/trunk</connection>
+		<developerConnection>scm:svn:https://sfvcheckftplet.googlecode.com/svn/trunk</developerConnection>
+		<url>http://code.google.com/p/sfvcheckftplet/source/browse/trunk</url>
+	</scm>
+	
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.ftpserver</groupId>
