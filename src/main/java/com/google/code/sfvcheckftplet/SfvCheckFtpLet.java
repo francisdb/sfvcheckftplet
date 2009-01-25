@@ -5,18 +5,26 @@ import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Map.Entry;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedInputStream;
 
+import net.sf.ehcache.Cache;
+import net.sf.ehcache.CacheManager;
+import net.sf.ehcache.Element;
+
 import org.apache.ftpserver.ftplet.DefaultFtpReply;
 import org.apache.ftpserver.ftplet.DefaultFtplet;
 import org.apache.ftpserver.ftplet.FtpException;
+import org.apache.ftpserver.ftplet.FtpFile;
 import org.apache.ftpserver.ftplet.FtpRequest;
 import org.apache.ftpserver.ftplet.FtpSession;
+import org.apache.ftpserver.ftplet.FtpletContext;
 import org.apache.ftpserver.ftplet.FtpletResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +37,35 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	
 	private static final int SITE_RESPONSE = 200;
 	private static final int TRANSFER_COMPLETE_RESPONSE = 226;
+	
+	private CacheManager manager;
+	private Cache cache;
+	
+	@Override
+	public void init(FtpletContext ftpletContext) throws FtpException {
+		// TODO set shutdown hook property, see manager.shutdown()
+		URL url = getClass().getResource("/ehcache-crc.xml");
+		CacheManager manager = new CacheManager(url);
+
+		manager.addCache("crcCache");
+		cache = manager.getCache("crcCache");
+		String[] cacheNames = manager.getCacheNames();
+		
+		for(String name:cacheNames){
+			Cache cache = manager.getCache(name);
+			System.out.println(cache.getName()+": "+cache.getSize()+" "+cache.getMemoryStoreSize()+" "+cache.getDiskStoreSize());
+			List<?> keys = cache.getKeys();
+			for(Object key:keys){
+				System.out.println("  - "+key.toString());
+			}
+		}
+	}
+	
+	@Override
+	public void destroy() {
+		manager.shutdown();
+	}
+	
 	
 	@Override
 	public FtpletResult onSite(FtpSession session, FtpRequest request) throws FtpException, IOException {
@@ -43,18 +80,26 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		String filePath = session.getUser().getHomeDirectory()
 		+ session.getFileSystemView().getWorkingDirectory().getAbsolutePath();
 		File work = new File(filePath);
-		rescan(session, SITE_RESPONSE, work);
+		rescan(session, SITE_RESPONSE, work, true);
 		return FtpletResult.SKIP;
+	}
+	
+	private File realFile(FtpSession session, FtpFile ftpFile) throws FtpException{
+		String filePath = session.getUser().getHomeDirectory() + ftpFile.getAbsolutePath();
+		return new File(filePath);
+	}
+	
+	private FtpFile ftpFile(FtpSession session, FtpRequest request) throws FtpException{
+		return session.getFileSystemView().getFile(request.getArgument());
 	}
 	
 	@Override
 	public FtpletResult onUploadEnd(FtpSession session, FtpRequest request) throws FtpException, IOException {
-		String filePath = session.getUser().getHomeDirectory()
-				+ session.getFileSystemView().getFile(request.getArgument()).getAbsolutePath();
+		FtpFile ftpFile = ftpFile(session, request);
+		File file = realFile(session, ftpFile);
 
-		File file = new File(filePath);
 		if(file.getName().endsWith(SFV_EXT)){
-			rescan(session, TRANSFER_COMPLETE_RESPONSE, file.getParentFile());
+			rescan(session, TRANSFER_COMPLETE_RESPONSE, file.getParentFile(), false);
 		}else{
 			// TODO find a better place to handle this where we can generate output
 			handleFile(session, TRANSFER_COMPLETE_RESPONSE, file);
@@ -62,7 +107,13 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return super.onUploadEnd(session, request);
 	}
 	
-	private void rescan(FtpSession session, int replyCode, File folder) throws IOException, FtpException{
+	@Override
+	public FtpletResult onDeleteEnd(FtpSession session, FtpRequest request) throws FtpException, IOException {
+		cache.remove(session.getFileSystemView().getFile(request.getArgument()).getAbsolutePath());
+		return super.onDeleteEnd(session, request);
+	}
+	
+	private void rescan(FtpSession session, int replyCode, File folder, boolean forced) throws IOException, FtpException{
 		File sfv = findSfv(folder);
 		if (sfv != null) {
 			session.write(new DefaultFtpReply(SITE_RESPONSE, "Rescanning files..."));
@@ -74,7 +125,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 			long totalSize = 0;
 			for(Entry<String,String> entry:filesToCheck.entrySet()){
 				File toCheck = new File(folder, entry.getKey());
-				Status status = handleFileNew(session, replyCode, toCheck, entry.getValue());
+				Status status = handleFileNew(session, replyCode, toCheck, entry.getValue(), forced);
 				if(status == Status.OK){
 					found++;
 					totalSize += toCheck.length();
@@ -122,11 +173,11 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return builder.toString();
 	}
 	
-	private Status handleFileNew(FtpSession session, int replyCode, File file, String sfvHex) throws IOException,
+	private Status handleFileNew(FtpSession session, int replyCode, File file, String sfvHex, boolean forced) throws IOException,
 			FtpException {
 		Status status= null;
 		if (file.exists()) {
-			long checksum = doChecksum(file);
+			long checksum = doChecksum(file, forced);
 			if (hexToLong(sfvHex) == checksum) {
 				status = Status.OK;
 				removeMissingFile(file);
@@ -195,7 +246,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 				Map<String, String> files = parseSfv(sfv);
 				String sfvHex = files.get(file.getName());
 				if(sfvHex != null){
-					long checksum = doChecksum(file);
+					long checksum = doChecksum(file, true);
 					if(hexToLong(sfvHex) == checksum){
 						status = Status.OK;
 						removeMissingFile(file);
@@ -257,23 +308,30 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return files;
 	}
 
-	private long doChecksum(File file) throws IOException {
-		long checksum = -1;
-		CheckedInputStream cis = null;
-		InputStream fis = null;
-		try {
-			// Compute CRC32 checksum
-			fis = new FileInputStream(file);
-			cis = new CheckedInputStream(fis, new CRC32());
-			byte[] buf = new byte[2048];
-			while (cis.read(buf) >= 0) {
-				// nothing to do, just read
+	private long doChecksum(File file, boolean force) throws IOException {
+		Long checksum = null;
+		if(!force){
+			checksum = (Long) cache.get(file.getAbsolutePath()).getValue();
+		}
+		if(checksum == null){
+			CheckedInputStream cis = null;
+			InputStream fis = null;
+			try {
+				// Compute CRC32 checksum
+				fis = new FileInputStream(file);
+				cis = new CheckedInputStream(fis, new CRC32());
+				byte[] buf = new byte[2048];
+				while (cis.read(buf) >= 0) {
+					// nothing to do, just read
+				}
+				checksum = cis.getChecksum().getValue();
+			} finally {
+				if (fis != null) {
+					fis.close();
+				}
 			}
-			checksum = cis.getChecksum().getValue();
-		} finally {
-			if (fis != null) {
-				fis.close();
-			}
+			cache.put(new Element(file.getAbsolutePath(), checksum));
+			cache.flush();
 		}
 		return checksum;
 	}
@@ -286,21 +344,18 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	}
 	
 	private static final class NoFolderOrSfvFileFilter implements FileFilter {
-		@Override
 		public boolean accept(File pathname) {
 			return pathname.isFile() && !pathname.getName().endsWith(SFV_EXT);
 		}
 	}
 	
 	private static final class SfvFileFilter implements FileFilter {
-		@Override
 		public boolean accept(File pathname) {
 			return pathname.isFile() && pathname.getName().endsWith(SFV_EXT);
 		}
 	}
 	
 	private static final class ProgressFileFilter implements FileFilter {
-		@Override
 		public boolean accept(File pathname) {
 			return pathname.isFile() && pathname.getName().endsWith("[SFV]");
 		}
