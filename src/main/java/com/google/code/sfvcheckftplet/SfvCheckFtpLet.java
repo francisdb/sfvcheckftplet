@@ -2,21 +2,11 @@ package com.google.code.sfvcheckftplet;
 
 import java.io.File;
 import java.io.FileFilter;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Map.Entry;
-import java.util.zip.CRC32;
-import java.util.zip.CheckedInputStream;
-
-import net.sf.ehcache.Cache;
-import net.sf.ehcache.CacheManager;
-import net.sf.ehcache.Element;
 
 import org.apache.ftpserver.ftplet.DefaultFtpReply;
 import org.apache.ftpserver.ftplet.DefaultFtplet;
@@ -29,6 +19,8 @@ import org.apache.ftpserver.ftplet.FtpletResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.code.sfvcheckftplet.service.CrcService;
+
 public class SfvCheckFtpLet extends DefaultFtplet {
 
 	private static final Logger logger = LoggerFactory.getLogger(SfvCheckFtpLet.class);
@@ -38,32 +30,21 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	private static final int SITE_RESPONSE = 200;
 	private static final int TRANSFER_COMPLETE_RESPONSE = 226;
 	
-	private CacheManager manager;
-	private Cache cache;
+
+	private final CrcService crcService;
+	
+	public SfvCheckFtpLet() {
+		this.crcService = new CrcService();
+	}
 	
 	@Override
 	public void init(FtpletContext ftpletContext) throws FtpException {
-		// TODO set shutdown hook property, see manager.shutdown()
-		URL url = getClass().getResource("/ehcache-crc.xml");
-		CacheManager manager = new CacheManager(url);
-
-		manager.addCache("crcCache");
-		cache = manager.getCache("crcCache");
-		String[] cacheNames = manager.getCacheNames();
-		
-		for(String name:cacheNames){
-			Cache cache = manager.getCache(name);
-			System.out.println(cache.getName()+": "+cache.getSize()+" "+cache.getMemoryStoreSize()+" "+cache.getDiskStoreSize());
-			List<?> keys = cache.getKeys();
-			for(Object key:keys){
-				System.out.println("  - "+key.toString());
-			}
-		}
+		crcService.init();
 	}
 	
 	@Override
 	public void destroy() {
-		manager.shutdown();
+		crcService.shutdown();
 	}
 	
 	
@@ -109,7 +90,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	
 	@Override
 	public FtpletResult onDeleteEnd(FtpSession session, FtpRequest request) throws FtpException, IOException {
-		cache.remove(session.getFileSystemView().getFile(request.getArgument()).getAbsolutePath());
+		crcService.clearData(session.getFileSystemView().getFile(request.getArgument()).getAbsolutePath());
 		return super.onDeleteEnd(session, request);
 	}
 	
@@ -177,7 +158,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 			FtpException {
 		Status status= null;
 		if (file.exists()) {
-			long checksum = doChecksum(file, forced);
+			long checksum = crcService.checksum(file, forced);
 			if (hexToLong(sfvHex) == checksum) {
 				status = Status.OK;
 				removeMissingFile(file);
@@ -246,7 +227,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 				Map<String, String> files = parseSfv(sfv);
 				String sfvHex = files.get(file.getName());
 				if(sfvHex != null){
-					long checksum = doChecksum(file, true);
+					long checksum = crcService.checksum(file, true);
 					if(hexToLong(sfvHex) == checksum){
 						status = Status.OK;
 						removeMissingFile(file);
@@ -308,33 +289,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return files;
 	}
 
-	private long doChecksum(File file, boolean force) throws IOException {
-		Long checksum = null;
-		if(!force){
-			checksum = (Long) cache.get(file.getAbsolutePath()).getValue();
-		}
-		if(checksum == null){
-			CheckedInputStream cis = null;
-			InputStream fis = null;
-			try {
-				// Compute CRC32 checksum
-				fis = new FileInputStream(file);
-				cis = new CheckedInputStream(fis, new CRC32());
-				byte[] buf = new byte[2048];
-				while (cis.read(buf) >= 0) {
-					// nothing to do, just read
-				}
-				checksum = cis.getChecksum().getValue();
-			} finally {
-				if (fis != null) {
-					fis.close();
-				}
-			}
-			cache.put(new Element(file.getAbsolutePath(), checksum));
-			cache.flush();
-		}
-		return checksum;
-	}
+
 	
 	private static enum Status{
 		MISSING,
