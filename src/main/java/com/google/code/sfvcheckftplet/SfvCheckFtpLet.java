@@ -21,6 +21,11 @@ import org.slf4j.LoggerFactory;
 
 import com.google.code.sfvcheckftplet.service.CrcService;
 
+/**
+ * TODO use http://java.sun.com/javase/5/docs/api/java/util/Formatter.html#syntax
+ * @author francisdb
+ *
+ */
 public class SfvCheckFtpLet extends DefaultFtplet {
 
 	private static final Logger logger = LoggerFactory.getLogger(SfvCheckFtpLet.class);
