@@ -30,7 +30,7 @@ public class SfvCheckFtpServer {
 		}
 	}
 
-	private void start() throws FtpException {
+	void start() throws FtpException {
 
 		ListenerFactory factory = new ListenerFactory();
 		// set the port of the listener
@@ -55,11 +55,11 @@ public class SfvCheckFtpServer {
 		FtpServerFactory serverFactory = new FtpServerFactory();
 		// replace the default listener
 		serverFactory.addListener("default", factory.createListener());
-		serverFactory.getFtplets().put("test", new SfvCheckFtpLet());
+		serverFactory.getFtplets().put("SfvCheckFtpLet", new SfvCheckFtpLet());
+		serverFactory.getFtplets().put("FileNameCheckFtplet", new FileNameCheckFtplet());
 		serverFactory.setUserManager(um);
 
 		FtpServer server = serverFactory.createServer();
-
 		// start the server
 		server.start();
 		logger.info("Try connecting to localhost on port "+DEFAULT_PORT);
