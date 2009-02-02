@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.zip.CRC32;
-import java.util.zip.CheckedInputStream;
 
 import org.apache.ftpserver.ftplet.FtpException;
 import org.slf4j.Logger;
@@ -117,17 +116,17 @@ public class CrcService {
 		}
 		if(checksum == null){
 			long startTime = System.currentTimeMillis();
-			CheckedInputStream cis = null;
 			InputStream fis = null;
 			try {
 				// Compute CRC32 checksum
 				fis = new FileInputStream(file);
-				cis = new CheckedInputStream(fis, new CRC32());
+				CRC32 crc32 = new CRC32();
 				byte[] buf = new byte[2048];
-				while (cis.read(buf) >= 0) {
-					// nothing to do, just read
+				int len;
+				while ((len = fis.read(buf)) >= 0) {
+					crc32.update(buf, 0, len);
 				}
-				checksum = cis.getChecksum().getValue();
+				checksum = crc32.getValue();
 			} finally {
 				if (fis != null) {
 					fis.close();
