@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.code.sfvcheckftplet.service.CrcService;
 import com.google.code.sfvcheckftplet.service.FileTools;
+import com.google.code.sfvcheckftplet.service.SystemTools;
 
 /**
  * TODO use http://java.sun.com/javase/5/docs/api/java/util/Formatter.html#syntax
@@ -181,16 +182,19 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 
 	}
 	
-	private void createParentIncompleteFileIfNeeded(File folder){
-		// TODO create link
+	private void createParentIncompleteFileIfNeeded(File folder) throws IOException{
 		File file = new File(folder.getParent(), "(incomplete)-"+folder.getName());
 		if(!file.exists()){
-			file.mkdir();
+			// crerate symbolic link in linux
+			if(SystemTools.osSupportsLinking()){
+				FileTools.createSymbolicLink(folder, file );
+			}else{
+				file.createNewFile();
+			}
 		}
 	}
 	
 	private void removeParentIncompleteFile(File folder){
-		// TODO create link
 		File file = new File(folder.getParent(), "(incomplete)-"+folder.getName());
 		if(file.exists()){
 			file.delete();

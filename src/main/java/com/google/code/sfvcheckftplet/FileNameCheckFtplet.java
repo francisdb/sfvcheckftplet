@@ -30,7 +30,8 @@ public class FileNameCheckFtplet extends DefaultFtplet {
 	
 	private boolean denied(String fileName){
 		return 
-			fileName.endsWith("[SFV]") 
+			fileName.contains("[")
+			|| fileName.contains("]")
 			|| fileName.equalsIgnoreCase("thumbs.db");
 	}
 }
