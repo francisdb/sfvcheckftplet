@@ -35,9 +35,11 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	
 
 	private final CrcService crcService;
+	private final Formatter formatter;
 	
 	public SfvCheckFtpLet() {
 		this.crcService = new CrcService();
+		this.formatter = new Formatter();
 	}
 	
 	@Override
@@ -165,7 +167,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 				file.createNewFile();
 			}else{
 				createParentIncompleteFileIfNeeded(folder);
-				File file = new File(folder, progressBar(percentage)+" - "+percentageInt+"% Complete - [SFV]");
+				File file = new File(folder, formatter.progressBar(percentage, 16)+" - "+percentageInt+"% Complete - [SFV]");
 				file.createNewFile();
 			}
 			
@@ -201,19 +203,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		}
 	}
 	
-	private String progressBar(float percentage) {
-		int count = (int) Math.floor(percentage * 14.0f);
-		StringBuilder builder = new StringBuilder("[");
-		for (int i = 0; i < 14; i++) {
-			if (i < count) {
-				builder.append('#');
-			} else {
-				builder.append(':');
-			}
-		}
-		builder.append(']');
-		return builder.toString();
-	}
+	
 	
 
 
