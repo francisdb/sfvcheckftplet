@@ -37,7 +37,10 @@ import com.google.code.sfvcheckftplet.service.FileTools;
 import com.google.code.sfvcheckftplet.service.SystemTools;
 
 /**
+ * Ftplet that crc checks incoming files
+ *  
  * TODO use http://java.sun.com/j2se/1.5.0/docs/api/java/util/Formatter.html
+ * 
  * @author francisdb
  *
  */
@@ -219,8 +222,23 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 
 	}
 	
+	private File parentIncompleteFile(File folder){
+		File parent = folder.getParentFile();
+		File folderToPlaceFile = folder.getParentFile();
+		String extra = "";
+		String problemFolder = folder.getName();
+		// TODO better check using regex?
+		if(folder.getName().toLowerCase().startsWith("cd")){
+			folderToPlaceFile = parent.getParentFile();
+			extra = "("+folder.getName()+")-";
+			problemFolder = parent.getName();
+		}
+		File file = new File(folderToPlaceFile, "(incomplete)-" + extra + problemFolder);
+		return file;
+	}
+	
 	private void createParentIncompleteFileIfNeeded(File folder) throws IOException{
-		File file = new File(folder.getParent(), "(incomplete)-"+folder.getName());
+		File file = parentIncompleteFile(folder);
 		if(!file.exists()){
 			if(SystemTools.osSupportsLinking()){
 				FileTools.createSymbolicLink(folder, file );
@@ -231,14 +249,11 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	}
 	
 	private void removeParentIncompleteFile(File folder){
-		File file = new File(folder.getParent(), "(incomplete)-"+folder.getName());
+		File file = parentIncompleteFile(folder);
 		if(file.exists()){
 			file.delete();
 		}
 	}
-	
-	
-	
 
 
 	
@@ -266,8 +281,18 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		
 		// get crc for this file
 		Status status = crcService.checkNewFile(file);
-		if(status == Status.OK){
+		switch(status){
+		case OK:
 			removeMissingFile(file);
+			break;
+		case FAIL:
+			// TODO make sure we want this
+			File renamed = new File(file.getParentFile(), file.getName() + "-bad");
+			if (renamed.exists()) {
+				renamed.delete();
+			}
+			file.renameTo(renamed);
+			break;
 		}
 
 		return status;
@@ -278,6 +303,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return 
 			fileName.contains("[")
 			|| fileName.contains("]")
+			|| fileName.endsWith("-missing")
 			|| fileName.equalsIgnoreCase("thumbs.db");
 	}
 	

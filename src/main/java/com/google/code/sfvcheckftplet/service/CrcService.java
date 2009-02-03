@@ -72,11 +72,6 @@ public class CrcService {
 					status = Status.FAIL;
 					// session.write(new
 					// DefaultFtpReply(replyCode,"FAIL "+file.getName()));
-					File renamed = new File(file.getParentFile(), file.getName() + ".bad");
-					if (renamed.exists()) {
-						renamed.delete();
-					}
-					file.renameTo(renamed);
 				}
 			} else {
 				status = Status.UNKNOWN;
