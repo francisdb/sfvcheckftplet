@@ -36,7 +36,7 @@ public class SfvCheckFtpServer {
 	private static final Logger logger = LoggerFactory.getLogger(SfvCheckFtpServer.class);
 
 	private static final int DEFAULT_PORT = 2221;
-	
+
 	public static void main(String[] args) {
 		try {
 			new SfvCheckFtpServer().start();
@@ -45,6 +45,9 @@ public class SfvCheckFtpServer {
 		}
 	}
 
+	/**
+	 * Add shutdown hook.
+	 */
 	void start() throws FtpException {
 
 		ListenerFactory factory = new ListenerFactory();
@@ -74,9 +77,28 @@ public class SfvCheckFtpServer {
 		serverFactory.setUserManager(um);
 
 		FtpServer server = serverFactory.createServer();
+
+		// add shutdown hook if possible
+		addShutdownHook(server);
+
 		// start the server
 		server.start();
-		logger.info("Try connecting to localhost on port "+DEFAULT_PORT);
+		logger.info("Try connecting to localhost on port " + DEFAULT_PORT);
+
+	}
 	
+	private static void addShutdownHook(final FtpServer engine) {
+
+		// create shutdown hook
+		Runnable shutdownHook = new Runnable() {
+			public void run() {
+				System.out.println("Stopping server...");
+				engine.stop();
+			}
+		};
+
+		// add shutdown hook
+		Runtime runtime = Runtime.getRuntime();
+		runtime.addShutdownHook(new Thread(shutdownHook));
 	}
 }
