@@ -32,7 +32,7 @@ public class CrcCache {
 	private Cache cache;
 
 	public CrcCache() {
-		// TODO Auto-generated constructor stub
+		super();
 	}
 
 	public void init() {

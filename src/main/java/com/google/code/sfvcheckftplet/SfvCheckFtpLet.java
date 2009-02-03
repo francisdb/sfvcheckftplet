@@ -21,7 +21,7 @@ import com.google.code.sfvcheckftplet.service.FileTools;
 import com.google.code.sfvcheckftplet.service.SystemTools;
 
 /**
- * TODO use http://java.sun.com/javase/5/docs/api/java/util/Formatter.html#syntax
+ * TODO use http://java.sun.com/j2se/1.5.0/docs/api/java/util/Formatter.html
  * @author francisdb
  *
  */
@@ -71,7 +71,6 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		SessionWriter writer = new DefaultSessionWriter(session, -REQUESTED_FILE_ACTION_OK);
 		FtpFile ftpFile = ftpFile(session, request);
 		File file = realFile(session, ftpFile);
-		// TODO find a cleaner way, do not delere -missing files that are not ours
 		if(FileTools.isSfv(file)){
 			cleanUp(file.getParentFile());
 			removeParentIncompleteFile(file.getParentFile());
@@ -124,9 +123,18 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	 * @param folder
 	 */
 	private void cleanUp(File folder){
-		File[] files = folder.listFiles(new ProgressMissingFileFilter());
+		Map<String,String> files = crcService.getCrcInfo(folder);
+		for(String file:files.keySet()){
+			File toDelete = new File(folder, file+"-missing");
+			if(toDelete.exists()){
+				toDelete.delete();
+			}
+		}
+		
+		// TODO find better way to select these files (regex?)
+		File[] indicatorFiles = folder.listFiles(new ProgressMissingFileFilter());
 		if(files != null){
-			for (File curFile : files) {
+			for (File curFile : indicatorFiles) {
 				curFile.delete();
 			}
 		}
@@ -187,7 +195,6 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	private void createParentIncompleteFileIfNeeded(File folder) throws IOException{
 		File file = new File(folder.getParent(), "(incomplete)-"+folder.getName());
 		if(!file.exists()){
-			// crerate symbolic link in linux
 			if(SystemTools.osSupportsLinking()){
 				FileTools.createSymbolicLink(folder, file );
 			}else{
@@ -265,7 +272,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	
 	private static final class ProgressMissingFileFilter implements FileFilter {
 		public boolean accept(File pathname) {
-			return pathname.isFile() && (pathname.getName().endsWith("[SFV]") || pathname.getName().endsWith("-missing"));
+			return pathname.isFile() && (pathname.getName().endsWith("[SFV]"));
 		}
 	}
 	
