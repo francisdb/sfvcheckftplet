@@ -54,11 +54,11 @@ public class SfvCheckFtpServer {
 		PropertiesUserManagerFactory userManagerFactory = new PropertiesUserManagerFactory();
 		// userManagerFactory.setFile(new File("myusers.properties"));
 		userManagerFactory.setPasswordEncryptor(new SaltedPasswordEncryptor());
-		userManagerFactory.setAdminName("francisdb");
+		userManagerFactory.setAdminName("test");
 		UserManager um = userManagerFactory.createUserManager();
 
 		BaseUser user = new BaseUser();
-		user.setName("francisdb");
+		user.setName("test");
 		user.setPassword("test");
 		user.setHomeDirectory("ftproot");
 		List<Authority> auths = new ArrayList<Authority>();
