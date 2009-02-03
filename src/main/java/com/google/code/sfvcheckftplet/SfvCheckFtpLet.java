@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.apache.ftpserver.ftplet.DefaultFtpReply;
 import org.apache.ftpserver.ftplet.DefaultFtplet;
 import org.apache.ftpserver.ftplet.FtpException;
 import org.apache.ftpserver.ftplet.FtpFile;
@@ -68,6 +69,17 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	}
 	
 	@Override
+	public FtpletResult onUploadStart(FtpSession session, FtpRequest request) throws FtpException, IOException {
+		String fileName = request.getArgument();
+		if(denied(fileName)){
+			session.write(new DefaultFtpReply(553, fileName+": path-filter denied permission. (Filename accept)"));
+			return FtpletResult.SKIP;
+		}else{
+			return super.onUploadStart(session, request);
+		}
+	}
+	
+	@Override
 	public FtpletResult onUploadEnd(FtpSession session, FtpRequest request) throws FtpException, IOException {
 		// TODO find a better place to handle this where we can generate output (neg value = no output)
 		SessionWriter writer = new DefaultSessionWriter(session, -TRANSFER_COMPLETE_RESPONSE);
@@ -101,8 +113,8 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		String argument = request.getArgument().toUpperCase();
 		if("RESCAN".equals(argument)){
 			return onSiteRescan(session, request);
-		}else if("STATUS".equals(argument)){
-			return onSiteStatus(session, request);
+		}else if("CACHE".equals(argument)){
+			return onSiteCache(session, request);
 		}
 		return super.onSite(session, request);
 	}
@@ -116,7 +128,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		return FtpletResult.SKIP;
 	}
 	
-	public FtpletResult onSiteStatus(FtpSession session, FtpRequest request) throws IllegalStateException, FtpException{
+	public FtpletResult onSiteCache(FtpSession session, FtpRequest request) throws IllegalStateException, FtpException{
 		crcService.printStatus(new DefaultSessionWriter(session, SITE_RESPONSE));
 		return FtpletResult.SKIP;
 	}
@@ -156,7 +168,7 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 	}
 	
 	private void rescan(SessionWriter writer, File folder, boolean forced) throws IOException, FtpException{
-		File sfv = findSfv(folder);
+		File sfv = FileTools.findSfv(folder);
 		if (sfv != null) {
 			writer.println("Rescanning files...");
 			writer.println();
@@ -260,23 +272,13 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 
 		return status;
 	}
-
-	private File findSfv(File folder) {
-		File sfv = null;
-		File[] files = folder.listFiles(new SfvFileFilter());
-		if(files != null){
-			for (File curFile : files) {
-				// TODO handle more than one sfv?
-				sfv = curFile;
-			}
-		}
-		return sfv;
-	}
 	
-	private static final class SfvFileFilter implements FileFilter {
-		public boolean accept(File pathname) {
-			return pathname.isFile() && FileTools.isSfv(pathname);
-		}
+	
+	private boolean denied(String fileName){
+		return 
+			fileName.contains("[")
+			|| fileName.contains("]")
+			|| fileName.equalsIgnoreCase("thumbs.db");
 	}
 	
 	private static final class ProgressFileFilter implements FileFilter {

@@ -71,7 +71,6 @@ public class SfvCheckFtpServer {
 		// replace the default listener
 		serverFactory.addListener("default", factory.createListener());
 		serverFactory.getFtplets().put("SfvCheckFtpLet", new SfvCheckFtpLet());
-		serverFactory.getFtplets().put("FileNameCheckFtplet", new FileNameCheckFtplet());
 		serverFactory.setUserManager(um);
 
 		FtpServer server = serverFactory.createServer();

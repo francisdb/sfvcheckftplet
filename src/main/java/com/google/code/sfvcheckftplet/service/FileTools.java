@@ -16,6 +16,7 @@
 package com.google.code.sfvcheckftplet.service;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 
 import org.apache.ftpserver.ftplet.FtpFile;
@@ -38,6 +39,18 @@ public class FileTools {
 		throw new UnsupportedOperationException("Utility class");
 	}
 	
+	public static File findSfv(File folder) {
+		File sfv = null;
+		File[] files = folder.listFiles(new SfvFileFilter());
+		if(files != null){
+			for (File curFile : files) {
+				// TODO handle more than one sfv?
+				sfv = curFile;
+			}
+		}
+		return sfv;
+	}
+	
 	public static boolean isSfv(File file){
 		return file.getName().toLowerCase().endsWith(SFV_EXT);
 	}
@@ -45,6 +58,7 @@ public class FileTools {
 	public static boolean isSfv(FtpFile file){
 		return file.getName().toLowerCase().endsWith(SFV_EXT);
 	}
+	
 	public static boolean createSymbolicLink(File source, File destination) throws IOException{
 		boolean succes = true;
 		Process process = Runtime.getRuntime().exec( new String[] { "ln", "-s", source.getAbsolutePath(), destination.getAbsolutePath() } );
@@ -56,6 +70,12 @@ public class FileTools {
 		}
 		process.destroy();
 		return succes;
+	}
+	
+	private static final class SfvFileFilter implements FileFilter {
+		public boolean accept(File pathname) {
+			return pathname.isFile() && FileTools.isSfv(pathname);
+		}
 	}
 
 }
