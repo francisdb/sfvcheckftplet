@@ -170,7 +170,7 @@ public class CrcService {
 				String strLine;
 				while (scanner.hasNextLine()) {
 					strLine = scanner.nextLine();
-					if (!strLine.startsWith(";") && !strLine.isEmpty()) {
+					if (!strLine.startsWith(";") && !(strLine.length() == 0)) {
 						int last = strLine.lastIndexOf(' ');
 						String file = strLine.substring(0, last);
 						String hex = strLine.substring(last + 1);
