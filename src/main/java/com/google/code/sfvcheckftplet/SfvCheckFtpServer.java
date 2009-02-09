@@ -15,6 +15,7 @@
  */
 package com.google.code.sfvcheckftplet;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,10 +37,15 @@ public class SfvCheckFtpServer {
 	private static final Logger logger = LoggerFactory.getLogger(SfvCheckFtpServer.class);
 
 	private static final int DEFAULT_PORT = 2221;
+	private static final String DEFAULT_HOME_DIR = "ftproot";
 
 	public static void main(String[] args) {
+		String homeDir = DEFAULT_HOME_DIR;
+		if(args.length == 1){
+			homeDir = args[0];
+		}
 		try {
-			new SfvCheckFtpServer().start();
+			new SfvCheckFtpServer().start(homeDir);
 		} catch (FtpException e) {
 			e.printStackTrace();
 		}
@@ -48,7 +54,7 @@ public class SfvCheckFtpServer {
 	/**
 	 * Add shutdown hook.
 	 */
-	void start() throws FtpException {
+	void start(final String homeDir) throws FtpException {
 
 		ListenerFactory factory = new ListenerFactory();
 		// set the port of the listener
@@ -63,7 +69,7 @@ public class SfvCheckFtpServer {
 		BaseUser user = new BaseUser();
 		user.setName("test");
 		user.setPassword("test");
-		user.setHomeDirectory("ftproot");
+		user.setHomeDirectory(homeDir);
 		List<Authority> auths = new ArrayList<Authority>();
 		Authority auth = new WritePermission();
 		auths.add(auth);
@@ -83,6 +89,7 @@ public class SfvCheckFtpServer {
 
 		// start the server
 		server.start();
+		logger.info("Serving folder: " + new File(homeDir).getAbsolutePath());
 		logger.info("Try connecting to localhost on port " + DEFAULT_PORT);
 
 	}
