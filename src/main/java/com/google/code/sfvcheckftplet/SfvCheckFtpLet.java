@@ -228,7 +228,8 @@ public class SfvCheckFtpLet extends DefaultFtplet {
 		String extra = "";
 		String problemFolder = folder.getName();
 		// TODO better check using regex?
-		if(folder.getName().toLowerCase().startsWith("cd")){
+		if(folder.getName().toLowerCase().startsWith("cd")
+				|| folder.getName().toLowerCase().equals("subs")){
 			folderToPlaceFile = parent.getParentFile();
 			extra = "("+folder.getName()+")-";
 			problemFolder = parent.getName();
