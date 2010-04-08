@@ -166,11 +166,14 @@
 					<configLocation>checkstyle.xml</configLocation>
 				</configuration> -->
 			</plugin>
+			<!-- somehow fails on missng X class -->
+			<!-- 
 			<plugin>
 				<groupId>net.sf</groupId>
 				<artifactId>stat-scm</artifactId>
 				<version>1.2.0</version>
 			</plugin>
+			 -->
 		</plugins>
 	</reporting>
 
